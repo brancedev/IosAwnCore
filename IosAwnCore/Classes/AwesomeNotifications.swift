@@ -515,7 +515,7 @@ public class AwesomeNotifications:
     private var _originalNotificationCenterDelegate: UNUserNotificationCenterDelegate?
     
     @objc public func didFinishLaunch(_ application: UIApplication) {
-        
+        _originalNotificationCenterDelegate = UNUserNotificationCenter.current().delegate
         UNUserNotificationCenter.current().delegate = self
         
         AwesomeNotifications.didFinishLaunch = true
@@ -539,6 +539,19 @@ public class AwesomeNotifications:
         withCompletionHandler completionHandler: @escaping () -> Void
     ){
         Logger.shared.d(TAG, "Notification Category Identifier (action): \(response.notification.request.content.categoryIdentifier)")
+        
+        if !isAwesomeNotification(response.notification.request.content) {
+             if let originalDelegate = _originalNotificationCenterDelegate {
+                 originalDelegate.userNotificationCenter?(
+                     center,
+                     didReceive: response,
+                     withCompletionHandler: completionHandler)
+             } else {
+                 completionHandler()
+             }
+             return
+        }
+        
         do {
             let buttonKeyPressed = response.actionIdentifier == UNNotificationDefaultActionIdentifier.description ?
                 nil : response.actionIdentifier
@@ -616,6 +629,19 @@ public class AwesomeNotifications:
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ){
+        if !isAwesomeNotification(notification.request.content) {
+             if let originalDelegate = _originalNotificationCenterDelegate {
+                 originalDelegate.userNotificationCenter?(
+                     center,
+                     willPresent: notification,
+                     withCompletionHandler: completionHandler)
+             } else {
+                 // Default behavior if no delegate exists
+                 completionHandler([.alert, .badge, .sound])
+             }
+             return
+        }
+
         let jsonData:[String : Any?] =
                 extractNotificationJsonMap(
                     fromContent: notification.request.content)
@@ -1067,4 +1093,10 @@ public class AwesomeNotifications:
             .shared
             .syncAllPendingSchedules(whenGotResults: completionHandler)
     }
+}
+
+private func isAwesomeNotification(_ content: UNNotificationContent) -> Bool {
+    let userInfo = content.userInfo
+    return userInfo[Definitions.NOTIFICATION_JSON] != nil ||
+           userInfo[Definitions.NOTIFICATION_MODEL_CONTENT] != nil
 }
